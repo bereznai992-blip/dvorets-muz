@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Retro Player — Dvorets Muz</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --bg-dark: #000000;
+    --bg-lit: #0a0a14;
+    --accent: #7aa2ff;
+  }
+
+  html, body {
+    background: var(--bg-dark);
+    color: #fff;
+    font-family: 'SF Pro Display', -apple-system, 'Helvetica Neue', Arial, sans-serif;
+    overflow-x: hidden;
+    min-height: 100vh;
+    transition: background 2.5s ease;
+  }
+
+  #room-light {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      circle at 50% 45%,
+      rgba(122,162,255,0.30) 0%,
+      rgba(122,162,255,0.10) 25%,
+      rgba(122,162,255,0.02) 50%,
+      rgba(0,0,0,0) 70%
+    );
+    opacity: 0;
+    transition: opacity 2.5s ease;
+  }
+
+  #stage {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+    pointer-events: none;
+    perspective: 1400px;
+  }
+
+  .player {
+    position: relative;
+    width: 340px;
+    height: 620px;
+    border-radius: 44px;
+    background: linear-gradient(145deg, #1a1a20, #0b0b10);
+    box-shadow:
+      inset 0 1px 1px rgba(255,255,255,0.08),
+      inset 0 -2px 6px rgba(0,0,0,0.6),
+      0 40px 80px rgba(0,0,0,0.6),
+      0 0 0 1px rgba(255,255,255,0.04);
+    transform: scale(0.85) rotateX(15deg) translateY(40px);
+    transform-style: preserve-3d;
+    transition: box-shadow 2s ease;
+    pointer-events: auto;
+    padding: 22px;
+    will-change: transform;
+  }
+
+  .screen {
+    position: relative;
+    width: 100%;
+    height: 55%;
+    border-radius: 22px;
+    background: #05050a;
+    overflow: hidden;
+    box-shadow:
+      inset 0 0 40px rgba(0,0,0,0.95),
+      inset 0 0 0 1px rgba(255,255,255,0.03);
+    transition:
+      background 2.5s cubic-bezier(0.4, 0, 0.2, 1),
+      box-shadow 2.5s cubic-bezier(0.4, 0, 0.2, 1),
+      filter 0.4s ease;
+  }
+  .screen.on {
+    background: linear-gradient(160deg, #dbe7ff 0%, #b6ccff 100%);
+    box-shadow:
+      inset 0 0 30px rgba(122,162,255,0.5),
+      0 0 40px rgba(122,162,255,0.45),
+      0 0 0 1px rgba(255,255,255,0.15);
+  }
+  /* Заменяем switching на более короткий и надёжный */
+  .screen.switching { filter: brightness(0.25) blur(1.5px); }
+
+  .screen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(transparent 50%, rgba(255,255,255,0.04) 50%);
+    background-size: 100% 3px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 5;
+    transition: opacity 2.5s ease;
+  }
+  .screen.on::after { opacity: 0.5; }
+
+  #scroll-layer {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+    z-index: 2;
+    transition: opacity 1.2s ease;
+    padding: 20px;
+    text-align: center;
+    pointer-events: none;
+  }
+  .scroll-title {
+    font-size: 18px;
+    font-weight: 500;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: #e8e8f5;
+    text-shadow: 0 0 10px rgba(220,225,255,0.4), 0 0 30px rgba(150,180,255,0.3);
+    animation: standbyGlow 3s ease-in-out infinite;
+  }
+  @keyframes standbyGlow {
+    0%,100% { opacity: 0.65; }
+    50%     { opacity: 1; }
+  }
+  .scroll-sub {
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(200,210,255,0.4);
+    animation: standbyGlow 3s ease-in-out infinite;
+    animation-delay: 0.3s;
+  }
+  .scroll-arrow {
+    margin-top: 12px;
+    width: 12px; height: 12px;
+    border-right: 1.5px solid rgba(200,210,255,0.7);
+    border-bottom: 1.5px solid rgba(200,210,255,0.7);
+    transform: rotate(45deg);
+    animation: arrowBounce 2.4s ease-in-out infinite;
+    filter: drop-shadow(0 0 6px rgba(150,180,255,0.6));
+  }
+  @keyframes arrowBounce {
+    0%,100% { transform: rotate(45deg) translate(0,0); opacity: 0.4; }
+    50%     { transform: rotate(45deg) translate(5px,5px); opacity: 1; }
+  }
+
+  #boot-layer {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 18px;
+    z-index: 3;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 1.2s ease, visibility 1.2s ease;
+    pointer-events: none;
+  }
+  .apple-small {
+    width: 40px;
+    height: 48px;
+    display: block;
+    animation: appleFade 1.6s ease-in-out infinite alternate;
+  }
+  .apple-small svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  @keyframes appleFade {
+    from { opacity: 0.75; }
+    to   { opacity: 1; }
+  }
+  .boot-bar {
+    width: 130px;
+    height: 3px;
+    background: rgba(10,10,26,0.15);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .boot-bar span {
+    display: block;
+    width: 0%;
+    height: 100%;
+    background: #0a0a1a;
+    border-radius: 3px;
+    transition: width 0.3s ease-out;
+  }
+
+  #playlist-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    padding: 18px 16px;
+    color: #0a0a1a;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 1.4s ease, visibility 1.4s ease;
+    pointer-events: auto;
+  }
+
+  .screen-header {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    opacity: 0.55;
+    border-bottom: 1px solid rgba(0,0,0,0.15);
+    padding-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .screen-title { font-size: 18px; font-weight: 600; margin: 10px 0 2px; }
+  .screen-sub { font-size: 10px; opacity: 0.5; margin-bottom: 10px; }
+
+  #visualizer {
+    width: 100%;
+    height: 40px;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .tracklist {
+    list-style: none;
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding-right: 2px;
+  }
+  .tracklist::-webkit-scrollbar { display: none; }
+
+  .track {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 8px;
+    font-size: 11.5px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+    position: relative;
+    pointer-events: auto;
+    user-select: none;
+  }
+  .track:hover { background: rgba(10,10,30,0.08); }
+  .track.active { background: rgba(10,10,30,0.15); font-weight: 600; }
+  .track .num {
+    opacity: 0.4;
+    font-variant-numeric: tabular-nums;
+    width: 18px;
+    font-size: 10px;
+  }
+  .track.active .num { opacity: 0; }
+  .track .play-icon {
+    position: absolute;
+    left: 8px;
+    width: 12px;
+    height: 12px;
+    opacity: 0;
+    color: #0a0a1a;
+    transition: opacity 0.3s ease;
+  }
+  .track.active .play-icon { opacity: 1; }
+  .track .name { flex: 1; }
+  .track .dur { opacity: 0.4; font-size: 10px; }
+  .track.active .dur { opacity: 0.6; }
+
+  .playing-bar {
+    margin-top: 6px;
+    height: 3px;
+    border-radius: 3px;
+    background: rgba(0,0,0,0.12);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .playing-bar span {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: #0a0a1a;
+    transition: width 0.3s linear;
+  }
+
+  .controls {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .wheel {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #2a2a30, #0d0d12);
+    box-shadow:
+      inset 0 2px 4px rgba(255,255,255,0.08),
+      inset 0 -4px 10px rgba(0,0,0,0.8),
+      0 0 0 1px rgba(255,255,255,0.05);
+    position: relative;
+    transition: box-shadow 2.5s ease;
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  .wheel-center {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #15151a, #08080c);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.9);
+    pointer-events: none;
+  }
+
+  #content {
+    position: relative;
+    z-index: 4;
+    pointer-events: none;
+  }
+  .spacer { height: 500vh; }
+
+  .cta-section {
+    min-height: 100vh;
+    pointer-events: none;
+    position: relative;
+  }
+
+  .tg-btn {
+    position: fixed;
+    bottom: 8vh;
+    left: 50%;
+    transform: translateX(-50%) translateY(40px) scale(0.95);
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 36px;
+    border-radius: 100px;
+    background: #7aa2ff;
+    border: 2px solid #7aa2ff;
+    color: #050508;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    text-decoration: none;
+    z-index: 20;
+    pointer-events: auto;
+    transition:
+      opacity 1.6s cubic-bezier(0.4, 0, 0.2, 1),
+      transform 1.6s cubic-bezier(0.4, 0, 0.2, 1),
+      background 0.4s ease,
+      color 0.4s ease,
+      border-color 0.4s ease,
+      box-shadow 0.4s ease;
+    opacity: 0;
+    box-shadow:
+      0 0 0 rgba(122,162,255,0),
+      0 20px 60px rgba(122,162,255,0.25);
+  }
+  .tg-btn.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  .tg-btn:hover {
+    background: #fff;
+    color: #050508;
+    border-color: #fff;
+    box-shadow:
+      0 0 60px rgba(122,162,255,0.7),
+      0 20px 60px rgba(122,162,255,0.5);
+    transform: translateX(-50%) translateY(-3px) scale(1.05);
+  }
+  .tg-btn svg { width: 20px; height: 20px; }
+
+  .cta-hint {
+    position: fixed;
+    bottom: calc(8vh - 30px);
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.25);
+    z-index: 20;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 1.6s cubic-bezier(0.4, 0, 0.2, 1) 0.3s;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .cta-hint.show { opacity: 1; }
+
+  .label {
+    position: fixed;
+    top: 30px; left: 30px;
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    opacity: 0.4;
+    z-index: 5;
+    transition: opacity 2s ease;
+    pointer-events: none;
+  }
+
+  @media (max-width: 768px) {
+    .label { top: 20px; left: 20px; font-size: 10px; }
+    .player {
+      width: min(92vw, 340px);
+      height: auto;
+      aspect-ratio: 340 / 620;
+      padding: 16px;
+      border-radius: 36px;
+    }
+    .wheel {
+      width: min(38vw, 130px);
+      height: min(38vw, 130px);
+    }
+    .wheel-center {
+      width: min(14vw, 46px);
+      height: min(14vw, 46px);
+    }
+    .screen-title { font-size: 16px; }
+    .track { font-size: 11px; padding: 6px 7px; }
+    .scroll-title { font-size: 15px; letter-spacing: 3px; }
+    .tg-btn {
+      font-size: 11px;
+      padding: 16px 28px;
+      letter-spacing: 2px;
+      bottom: 6vh;
+    }
+    .cta-hint { bottom: calc(6vh - 26px); }
+    .spacer { height: 450vh; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #room-light { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="room-light"></div>
+<div class="label">Dvorets Muz</div>
+
+<div id="stage">
+  <div class="player" id="player">
+    <div class="screen" id="screen">
+
+      <div id="scroll-layer">
+        <div class="scroll-title">Scroll Down</div>
+        <div class="scroll-sub">to wake the player</div>
+        <div class="scroll-arrow"></div>
+      </div>
+
+      <div id="boot-layer">
+        <div class="apple-small">
+          <svg viewBox="0 0 24 28" xmlns="http://www.w3.org/2000/svg">
+            <path fill="#0a0a1a" d="M17.86 14.87c-.02-2.4 1.96-3.55 2.05-3.61-1.12-1.64-2.86-1.86-3.48-1.89-1.48-.15-2.89.87-3.64.87-.75 0-1.91-.85-3.14-.83-1.62.02-3.11.94-3.94 2.38-1.68 2.92-.43 7.24 1.21 9.62.8 1.17 1.76 2.47 3.02 2.42 1.21-.05 1.67-.78 3.13-.78 1.46 0 1.87.78 3.14.75 1.29-.02 2.12-1.18 2.9-2.35.92-1.34 1.29-2.63 1.31-2.69-.03-.01-2.51-.96-2.56-3.89zM15.4 7.87c.66-.8 1.11-1.91.98-3.03-.95.04-2.11.63-2.79 1.43-.61.71-1.15 1.85-1.01 2.94 1.07.08 2.16-.54 2.82-1.34z"/>
+          </svg>
+        </div>
+        <div class="boot-bar"><span id="boot-progress"></span></div>
+      </div>
+
+      <div id="playlist-layer">
+        <div class="screen-header">
+          <span>NOW PLAYING</span>
+          <span id="clock">--:--</span>
+        </div>
+        <div class="screen-title">Dvorets Muz</div>
+        <div class="screen-sub">Midnight Session · Vol. 1</div>
+
+        <canvas id="visualizer"></canvas>
+
+        <!-- Проверенные рабочие треки Pixabay (без параметров filename) -->
+        <ul class="tracklist" id="tracklist">
+          <li class="track active" data-src="https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3">
+            <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
+            <span class="num">01</span><span class="name">Neon Drive</span><span class="dur">2:12</span>
+          </li>
+          <li class="track" data-src="https://cdn.pixabay.com/audio/2022/01/18/audio_d0a13f69d2.mp3">
+            <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
+            <span class="num">02</span><span class="name">Midnight Tape</span><span class="dur">2:30</span>
+          </li>
+          <li class="track" data-src="https://cdn.pixabay.com/audio/2021/11/25/audio_91b32e02f9.mp3">
+            <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
+            <span class="num">03</span><span class="name">Chrome Sunset</span><span class="dur">1:45</span>
+          </li>
+          <li class="track" data-src="https://cdn.pixabay.com/audio/2022/03/15/audio_c8c8a73467.mp3">
+            <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
+            <span class="num">04</span><span class="name">Vapor Trail</span><span class="dur">3:05</span>
+          </li>
+          <li class="track" data-src="https://cdn.pixabay.com/audio/2022/10/30/audio_34c6b3d7b6.mp3">
+            <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
+            <span class="num">05</span><span class="name">Afterglow</span><span class="dur">2:48</span>
+          </li>
+        </ul>
+
+        <div class="playing-bar"><span id="progress"></span></div>
+      </div>
+
+    </div>
+
+    <div class="controls">
+      <div class="wheel" id="wheel"><div class="wheel-center"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="content">
+  <div class="spacer"></div>
+  <div class="cta-section"></div>
+</div>
+
+<a href="https://t.me/dvorets_muz" target="_blank" rel="noopener" class="tg-btn" id="tgBtn">
+  <svg viewBox="0 0 24 24" fill="currentColor">
+    <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/>
+  </svg>
+  Join Telegram Channel
+</a>
+<div class="cta-hint" id="ctaHint">t.me / dvorets_muz</div>
+
+<audio id="audio" preload="metadata"></audio>
+
+<script>
+  const audio = document.getElementById('audio');
+  const progressBar = document.getElementById('progress');
+  const tracks = document.querySelectorAll('.track');
+  const screen = document.getElementById('screen');
+  const player = document.getElementById('player');
+  const canvas = document.getElementById('visualizer');
+  const ctx = canvas.getContext('2d');
+  const body = document.body;
+
+  const scrollLayer = document.getElementById('scroll-layer');
+  const bootLayer = document.getElementById('boot-layer');
+  const playlistLayer = document.getElementById('playlist-layer');
+  const bootProgress = document.getElementById('boot-progress');
+  const tgBtn = document.getElementById('tgBtn');
+  const ctaHint = document.getElementById('ctaHint');
+  const roomLight = document.getElementById('room-light');
+  const label = document.querySelector('.label');
+  const wheel = document.getElementById('wheel');
+
+  let musicStarted = false;
+  let playlistVisible = false;
+  let currentTrackIndex = 0;
+  let switchingTimeout = null;
+
+  let currentProgress = 0;
+  let targetProgress = 0;
+  let mouseX = 0, mouseY = 0;
+  let smoothMouseX = 0, smoothMouseY = 0;
+
+  // ============ БЕЗОПАСНОЕ СНЯТИЕ switching ============
+  function clearSwitching() {
+    screen.classList.remove('switching');
+    if (switchingTimeout) {
+      clearTimeout(switchingTimeout);
+      switchingTimeout = null;
+    }
+  }
+
+  // ============ ПЕРЕКЛЮЧЕНИЕ ТРЕКА ============
+  function playTrack(index) {
+    if (index < 0 || index >= tracks.length) return;
+    currentTrackIndex = index;
+
+    tracks.forEach(t => t.classList.remove('active'));
+    tracks[index].classList.add('active');
+
+    const src = tracks[index].dataset.src;
+    console.log('[Player] Playing:', src);
+
+    // Включаем затемнение
+    screen.classList.add('switching');
+    clearTimeout(switchingTimeout);
+    // Страховка: если через 3 сек класс всё ещё стоит — снимаем принудительно
+    switchingTimeout = setTimeout(() => {
+      console.warn('[Player] Force clear switching');
+      clearSwitching();
+    }, 3000);
+
+    // Меняем источник
+    audio.src = src;
+    audio.volume = 0.6;
+
+    const p = audio.play();
+    if (p && p.then) {
+      p.then(() => {
+        musicStarted = true;
+        console.log('[Player] Started:', src);
+        // Снимаем затемнение через короткую паузу — визуально плавно
+        setTimeout(() => clearSwitching(), 300);
+      }).catch(err => {
+        console.warn('[Player] Play failed:', err.name);
+        musicStarted = false;
+        clearSwitching();
+      });
+    }
+  }
+
+  // ============ АУДИО СОБЫТИЯ ============
+  audio.addEventListener('playing', () => {
+    musicStarted = true;
+    clearSwitching();
+  });
+  audio.addEventListener('error', (e) => {
+    console.warn('[Player] Audio error:', audio.src);
+    musicStarted = false;
+    clearSwitching();
+    // Автопропуск: если трек битый — играем следующий
+    if (tracks.length > 1) {
+      const next = (currentTrackIndex + 1) % tracks.length;
+      if (next !== currentTrackIndex) {
+        setTimeout(() => playTrack(next), 400);
+      }
+    }
+  });
+
+  // ============ КЛИК ПО ТРЕКУ ============
+  tracks.forEach((track, i) => {
+    track.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (i === currentTrackIndex && !audio.paused) return; // уже играет
+      playTrack(i);
+    });
+  });
+
+  // ============ АВТОПЕРЕХОД ============
+  audio.addEventListener('ended', () => {
+    const next = (currentTrackIndex + 1) % tracks.length;
+    playTrack(next);
+  });
+
+  // ============ КОЛЕСО = PLAY/PAUSE ============
+  wheel.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!audio.src) {
+      playTrack(0);
+      return;
+    }
+    if (audio.paused) {
+      audio.play().then(() => musicStarted = true).catch(() => {});
+    } else {
+      audio.pause();
+    }
+  });
+
+  // ============ СВАЙП ПО КОЛЕСУ ============
+  let wheelTouchStartY = null;
+  wheel.addEventListener('touchstart', (e) => {
+    wheelTouchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  wheel.addEventListener('touchend', (e) => {
+    if (wheelTouchStartY === null) return;
+    const dy = e.changedTouches[0].clientY - wheelTouchStartY;
+    if (Math.abs(dy) > 30) {
+      const next = dy < 0
+        ? (currentTrackIndex + 1) % tracks.length
+        : (currentTrackIndex - 1 + tracks.length) % tracks.length;
+      playTrack(next);
+    }
+    wheelTouchStartY = null;
+  });
+
+  // ============ ЭКВАЛАЙЗЕР ============
+  function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0) return;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+  }
+  window.addEventListener('resize', resizeCanvas);
+
+  let _barPhase = 0;
+  function drawVisualizer() {
+    requestAnimationFrame(drawVisualizer);
+
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.width / dpr;
+    const h = canvas.height / dpr;
+    if (w === 0) return;
+
+    ctx.clearRect(0, 0, w, h);
+
+    const barCount = 32;
+    const barWidth = w / barCount;
+    const gap = 2;
+
+    const intensity = musicStarted ? 0.45 : 0.12;
+    _barPhase += musicStarted ? 0.08 : 0.02;
+
+    for (let i = 0; i < barCount; i++) {
+      const wave1 = Math.sin(_barPhase + i * 0.5);
+      const wave2 = Math.sin(_barPhase * 1.7 + i * 0.9);
+      const wave3 = Math.sin(_barPhase * 0.6 + i * 1.3);
+      const combined = (wave1 + wave2 + wave3) / 3;
+
+      const value = 0.15 + Math.abs(combined) * intensity + 0.05;
+      const barHeight = Math.max(2, value * h);
+      const x = i * barWidth;
+      const y = h - barHeight;
+
+      const grad = ctx.createLinearGradient(0, y, 0, h);
+      grad.addColorStop(0, '#7aa2ff');
+      grad.addColorStop(0.6, '#3a5fb8');
+      grad.addColorStop(1, '#0a0a1a');
+      ctx.fillStyle = grad;
+      ctx.fillRect(x + gap/2, y, barWidth - gap, barHeight);
+    }
+  }
+  drawVisualizer();
+  setTimeout(resizeCanvas, 200);
+  setTimeout(resizeCanvas, 800);
+
+  // ============ ЧАСЫ ============
+  const clockEl = document.getElementById('clock');
+  function updateClock() {
+    const d = new Date();
+    clockEl.textContent = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  }
+  updateClock();
+  setInterval(updateClock, 30000);
+
+  // ============ ПРОГРЕСС ============
+  setInterval(() => {
+    if (!audio.duration || isNaN(audio.duration)) return;
+    progressBar.style.width = ((audio.currentTime / audio.duration) * 100) + '%';
+  }, 250);
+
+  // ============ СКРОЛЛ ============
+  function updateTargetProgress() {
+    const docHeight = document.body.scrollHeight - window.innerHeight;
+    targetProgress = docHeight > 0 ? Math.min(1, Math.max(0, window.scrollY / docHeight)) : 0;
+  }
+  window.addEventListener('scroll', updateTargetProgress, { passive: true });
+  window.addEventListener('resize', updateTargetProgress);
+  updateTargetProgress();
+
+  window.addEventListener('mousemove', (e) => {
+    mouseX = (e.clientX / window.innerWidth - 0.5) * 8;
+    mouseY = (e.clientY / window.innerHeight - 0.5) * -8;
+  });
+
+  // ============ ГЛАВНЫЙ ЦИКЛ ============
+  let screenOn = false;
+  let bootVisible = false;
+  let btnVisible = false;
+
+  function tick() {
+    requestAnimationFrame(tick);
+
+    currentProgress += (targetProgress - currentProgress) * 0.045;
+    smoothMouseX += (mouseX - smoothMouseX) * 0.06;
+    smoothMouseY += (mouseY - smoothMouseY) * 0.06;
+
+    const p = currentProgress;
+
+    // ФАЗА 1
+    const liftProgress = Math.min(1, p / 0.25);
+    const easeLift = 1 - Math.pow(1 - liftProgress, 3);
+
+    const scale = 0.85 + (1.0 - 0.85) * easeLift;
+    const rotX = 15 + (0 - 15) * easeLift;
+    const transY = 40 + (0 - 40) * easeLift;
+
+    const mouseInfluence = Math.max(0, (p - 0.20) / 0.30);
+    const finalRotX = rotX + smoothMouseY * 0.35 * mouseInfluence;
+    const finalRotY = smoothMouseX * 0.35 * mouseInfluence;
+
+    player.style.transform =
+      `scale(${scale}) rotateX(${finalRotX}deg) rotateY(${finalRotY}deg) translateY(${transY}px)`;
+
+    const glowAmount = Math.max(0, (p - 0.30) / 0.40);
+    player.style.boxShadow = `
+      inset 0 1px 1px rgba(255,255,255,${0.08 + 0.04 * glowAmount}),
+      inset 0 -2px 6px rgba(0,0,0,0.6),
+      0 40px 80px rgba(0,0,0,${0.6 + 0.2 * glowAmount}),
+      0 0 ${60 * glowAmount}px rgba(122,162,255,${0.25 * glowAmount}),
+      0 0 0 1px rgba(122,162,255,${0.2 * glowAmount})
+    `;
+
+    // ФАЗА 2
+    const screenOnProgress = Math.max(0, Math.min(1, (p - 0.25) / 0.15));
+    if (screenOnProgress > 0.5 && !screenOn) {
+      screen.classList.add('on');
+      screenOn = true;
+    } else if (screenOnProgress <= 0.5 && screenOn) {
+      screen.classList.remove('on');
+      screenOn = false;
+    }
+
+    scrollLayer.style.opacity = Math.max(0, 1 - (p - 0.15) / 0.15);
+
+    const bootOpacity = Math.max(0, Math.min(1, (p - 0.30) / 0.10)) *
+                        Math.max(0, Math.min(1, (0.65 - p) / 0.10));
+    if (bootOpacity > 0.01) {
+      bootLayer.style.opacity = bootOpacity;
+      bootLayer.style.visibility = 'visible';
+      bootVisible = true;
+      const bootPct = Math.min(100, Math.max(0, ((p - 0.30) / 0.30) * 100));
+      bootProgress.style.width = bootPct + '%';
+    } else {
+      if (bootVisible) {
+        bootLayer.style.opacity = 0;
+        bootLayer.style.visibility = 'hidden';
+        bootVisible = false;
+      }
+    }
+
+    // ФАЗА 3
+    const playlistOpacity = Math.max(0, Math.min(1, (p - 0.58) / 0.10));
+    if (playlistOpacity > 0.01) {
+      playlistLayer.style.opacity = playlistOpacity;
+      playlistLayer.style.visibility = 'visible';
+      if (!playlistVisible) {
+        playlistVisible = true;
+        setTimeout(resizeCanvas, 200);
+      }
+    } else {
+      if (playlistVisible) {
+        playlistLayer.style.opacity = 0;
+        playlistLayer.style.visibility = 'hidden';
+        playlistVisible = false;
+      }
+    }
+
+    // ФАЗА 4
+    const atmosphere = Math.max(0, Math.min(1, (p - 0.50) / 0.30));
+    roomLight.style.opacity = atmosphere;
+
+    if (atmosphere > 0.3) {
+      body.style.background = '#0a0a14';
+    } else {
+      body.style.background = '#000000';
+    }
+
+    const wheelGlow = Math.max(0, Math.min(1, (p - 0.55) / 0.25));
+    wheel.style.boxShadow = `
+      inset 0 2px 4px rgba(122,162,255,${0.3 * wheelGlow}),
+      inset 0 -4px 10px rgba(0,0,0,0.8),
+      0 0 0 1px rgba(122,162,255,${0.3 * wheelGlow}),
+      0 0 ${40 * wheelGlow}px rgba(122,162,255,${0.3 * wheelGlow})
+    `;
+
+    // ФАЗА 5
+    const btnProgress = Math.max(0, Math.min(1, (p - 0.75) / 0.10));
+    if (btnProgress > 0.1 && !btnVisible) {
+      tgBtn.classList.add('show');
+      ctaHint.classList.add('show');
+      btnVisible = true;
+    } else if (btnProgress <= 0.1 && btnVisible) {
+      tgBtn.classList.remove('show');
+      ctaHint.classList.remove('show');
+      btnVisible = false;
+    }
+
+    label.style.opacity = 0.4 + atmosphere * 0.3;
+  }
+  tick();
+
+  window.addEventListener('load', () => {
+    setTimeout(resizeCanvas, 300);
+  });
+</script>
+</body>
+</html>
